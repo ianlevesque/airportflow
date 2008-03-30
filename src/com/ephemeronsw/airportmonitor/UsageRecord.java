@@ -8,9 +8,9 @@ public class UsageRecord {
 	private static final short MAGIC = (short) 0xBEEF;
 
 	private long timeCaptured = 0;
-	private long uptime = 0;
-	private long transferredIn = 0;
-	private long transferredOut = 0;
+	private long uptime = 0; // unsigned integer
+	private long transferredIn = 0; // unsigned integer
+	private long transferredOut = 0; // unsigned integer
 
 	public UsageRecord(long timeCaptured, long uptime, long transferredIn, long transferredOut) {
 		this.timeCaptured = timeCaptured;
