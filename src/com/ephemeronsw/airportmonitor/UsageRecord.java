@@ -1,9 +1,11 @@
 package com.ephemeronsw.airportmonitor;
 
-import java.io.Serializable;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 
-public class UsageRecord implements Serializable {
-	private static final long serialVersionUID = 1L;
+public class UsageRecord {
+	private static final long MAGIC = 0xDEADBEEFDEADBEEFL;
 	
 	private long timeCaptured = 0;
 	private long uptime = 0;
@@ -51,5 +53,28 @@ public class UsageRecord implements Serializable {
 
 	public void setTransferredOut(long transferredOut) {
 		this.transferredOut = transferredOut;
+	}
+	
+	public static UsageRecord readFromStream(DataInputStream stream) throws IOException {
+		UsageRecord record = new UsageRecord();
+		
+		long magic = stream.readLong();
+		if(magic != MAGIC)
+			throw new IOException("Magic value is wrong, stream corrupted");
+		
+		record.setTimeCaptured(stream.readLong());
+		record.setTransferredIn(stream.readLong());
+		record.setTransferredOut(stream.readLong());
+		record.setUptime(stream.readLong());
+		
+		return record;
+	}
+	
+	public void writeToStream(DataOutputStream stream) throws IOException {
+		stream.writeLong(MAGIC);
+		stream.writeLong(timeCaptured);
+		stream.writeLong(transferredIn);
+		stream.writeLong(transferredOut);
+		stream.writeLong(uptime);
 	}
 }

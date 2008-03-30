@@ -1,6 +1,26 @@
 package com.ephemeronsw.airportmonitor;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileFilter;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.text.DecimalFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -20,16 +40,23 @@ import org.snmp4j.transport.DefaultUdpTransportMapping;
 
 public class AirPortMonitor implements Runnable {
 
+	private static final String HISTORY_PREFIX = "history-";
+	private static final SimpleDateFormat HISTORY_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd-HH");
 	private static final OID UPTIME_OID = new OID("1.3.6.1.2.1.1.3.0");
 	private static final OID IN_OCTETS_OID = new OID("1.3.6.1.2.1.2.2.1.10.1");
 	private static final OID OUT_OCTETS_OID = new OID("1.3.6.1.2.1.2.2.1.16.1");
+
+	private File historyDirectory = new File("./history/");
+
+	CumulativeCounter totalIn = new CumulativeCounter();
+	CumulativeCounter totalOut = new CumulativeCounter();
 
 	/**
 	 * @param args
 	 */
 	public static void main(String[] args) {
 		configureLogging();
-		
+
 		AirPortMonitor monitor;
 		try {
 			monitor = new AirPortMonitor();
@@ -37,7 +64,13 @@ public class AirPortMonitor implements Runnable {
 			Logger.getLogger(AirPortMonitor.class).error("Error starting", e);
 			return;
 		}
-		
+
+		try {
+			monitor.loadHistory();
+		} catch (Exception e) {
+			Logger.getLogger(AirPortMonitor.class).error("Error loading history", e);
+		}
+
 		monitor.run();
 	}
 
@@ -49,23 +82,25 @@ public class AirPortMonitor implements Runnable {
 	private Snmp snmp;
 	private PDU requestPDU;
 	private CommunityTarget target;
-	
+
 	public AirPortMonitor() throws IOException {
 
 		target = new CommunityTarget();
 		target.setCommunity(new OctetString("public"));
 		Address targetAddress = GenericAddress.parse("udp:10.0.1.1/161");
-		target.setAddress(targetAddress );
+		target.setAddress(targetAddress);
 		target.setVersion(SnmpConstants.version2c);
 		target.setRetries(2);
 		target.setTimeout(1500);
-		
+
 		requestPDU = new PDU();
-		requestPDU.add(new VariableBinding(OUT_OCTETS_OID)); // ifOutOctets (for gec0)
-		requestPDU.add(new VariableBinding(IN_OCTETS_OID)); // ifInOctets (for gec0)
+		requestPDU.add(new VariableBinding(OUT_OCTETS_OID)); // ifOutOctets
+																// (for gec0)
+		requestPDU.add(new VariableBinding(IN_OCTETS_OID)); // ifInOctets (for
+															// gec0)
 		requestPDU.add(new VariableBinding(UPTIME_OID)); // uptime
 		requestPDU.setType(PDU.GET);
-		
+
 		DefaultUdpTransportMapping transport = new DefaultUdpTransportMapping();
 		snmp = new Snmp(transport);
 		transport.listen();
@@ -73,7 +108,7 @@ public class AirPortMonitor implements Runnable {
 
 	public void run() {
 		Timer loggingTimer = new Timer("Logging timer", false);
-		
+
 		loggingTimer.scheduleAtFixedRate(new TimerTask() {
 			@Override
 			public void run() {
@@ -81,35 +116,37 @@ public class AirPortMonitor implements Runnable {
 			}
 		}, 0, 10000);
 	}
-	
+
 	public void logUsageNow() {
 		try {
 			ResponseEvent response = snmp.send(requestPDU, target);
-			
-			if(response.getResponse() != null) {
+
+			if (response.getResponse() != null) {
 				UsageRecord record = new UsageRecord(System.currentTimeMillis(), 0, 0, 0);
-				
+
 				long uptimeTicks = -1;
 				long usageIn = -1;
 				long usageOut = -1;
-				
-				for(VariableBinding binding : response.getResponse().toArray()) {
-					if(binding.getOid().equals(OUT_OCTETS_OID)) {
-						logger.info("Out octets: " + binding.getVariable().toString());
+
+				for (VariableBinding binding : response.getResponse().toArray()) {
+					if (binding.getOid().equals(OUT_OCTETS_OID)) {
+						logger.debug("Out octets: " + binding.getVariable().toString());
 						usageOut = binding.getVariable().toLong();
-					} else if(binding.getOid().equals(IN_OCTETS_OID)) {
-						logger.info("In octets: " + binding.getVariable().toString());
+					} else if (binding.getOid().equals(IN_OCTETS_OID)) {
+						logger.debug("In octets: " + binding.getVariable().toString());
 						usageIn = binding.getVariable().toLong();
-					} else if(binding.getOid().equals(UPTIME_OID)) {
-						logger.info("Uptime: " + binding.getVariable().toString());
+					} else if (binding.getOid().equals(UPTIME_OID)) {
+						logger.debug("Uptime: " + binding.getVariable().toString());
 						uptimeTicks = binding.getVariable().toLong();
 					}
 				}
-				
-				if(uptimeTicks == -1 || usageIn == -1 || usageOut == -1) {
-					logger.error("One or more replies missing"); // FIXME: necessary?
+
+				if (uptimeTicks == -1 || usageIn == -1 || usageOut == -1) {
+					logger.error("One or more replies missing"); // FIXME:
+																	// necessary?
 				} else {
-					record.setUptime(uptimeTicks * 10); // convert to milliseconds
+					record.setUptime(uptimeTicks * 10); // convert to
+														// milliseconds
 					record.setTransferredIn(usageIn);
 					record.setTransferredOut(usageOut);
 				}
@@ -125,11 +162,141 @@ public class AirPortMonitor implements Runnable {
 	}
 
 	private void processRecord(UsageRecord record) {
-		
+
+		// FIXME: use Uptime value to correctly accumulate the very top of the
+		// overflow (4GB)
+		totalIn.accumulateValue(record.getTransferredIn());
+		totalOut.accumulateValue(record.getTransferredOut());
+
+		double inGigabytes = totalIn.getCurrentValue() / 1024.0 / 1024.0 / 1024.0;
+		double outGigabytes = totalOut.getCurrentValue() / 1024.0 / 1024.0 / 1024.0;
+
+		DecimalFormat format = new DecimalFormat();
+		format.setMaximumFractionDigits(3);
+		format.setMinimumFractionDigits(3);
+
+		logger.info("Total In: " + format.format(inGigabytes) + " GB Total Out: " + format.format(outGigabytes) + " GB");
 	}
 
-	private void storeRecord(UsageRecord record) {
-		
+	private void storeRecord(UsageRecord record) throws IOException {
+		if (historyDirectory.exists() == false)
+			historyDirectory.mkdir();
+
+		// find the right file, append the record
+		String filename = HISTORY_PREFIX + HISTORY_DATE_FORMAT.format(new Date(record.getTimeCaptured()));
+
+		DataOutputStream outputStream = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(new File(historyDirectory, filename), true)));
+		record.writeToStream(outputStream);
+		outputStream.close();
+	}
+
+	private void loadHistory() throws FileNotFoundException, IOException, ClassNotFoundException {
+		File[] historyFiles = historyDirectory.listFiles(new FileFilter() {
+			public boolean accept(File pathname) {
+				if (pathname.isDirectory())
+					return false;
+
+				return pathname.getName().startsWith("history");
+			}
+		});
+
+		GregorianCalendar calendar = new GregorianCalendar();
+		calendar.set(Calendar.DAY_OF_MONTH, 1);
+		calendar.set(Calendar.HOUR_OF_DAY, 0);
+		calendar.set(Calendar.MINUTE, 0);
+		calendar.set(Calendar.SECOND, 0);
+		calendar.set(Calendar.MILLISECOND, 0);
+		long startOfMonth = calendar.getTimeInMillis();
+
+		List<File> thisMonthFiles = new ArrayList<File>();
+
+		boolean firstFileIsFirstOfMonth = false;
+
+		// find this month's files
+		for (File file : historyFiles) {
+			logger.debug("History file: " + file.getName());
+			try {
+				long date = HISTORY_DATE_FORMAT.parse(file.getName().substring(HISTORY_PREFIX.length())).getTime();
+
+				if (date >= startOfMonth) {
+					thisMonthFiles.add(file);
+				}
+
+				if (date == startOfMonth) {
+					firstFileIsFirstOfMonth = true;
+				}
+			} catch (ParseException e) {
+			}
+		}
+
+		// sort by date
+		Collections.sort(thisMonthFiles, new Comparator<File>() {
+			public int compare(File o1, File o2) {
+				try {
+					long date1 = HISTORY_DATE_FORMAT.parse(o1.getName().substring(HISTORY_PREFIX.length())).getTime();
+					long date2 = HISTORY_DATE_FORMAT.parse(o2.getName().substring(HISTORY_PREFIX.length())).getTime();
+					return (int) (date1 - date2);
+				} catch (ParseException e) {
+					return 0;
+				}
+			}
+
+		});
+
+		// process
+		if (thisMonthFiles.size() > 0) {
+			File firstFile = thisMonthFiles.get(0);
+			DataInputStream inputStream = null;
+			try {
+				logger.debug("Processing history file: " + firstFile.getName());
+
+				inputStream = new DataInputStream(new BufferedInputStream(new FileInputStream(firstFile)));
+
+				if (firstFileIsFirstOfMonth) {
+					UsageRecord firstRecord = UsageRecord.readFromStream(inputStream);
+					totalIn.resetAtValue(firstRecord.getTransferredIn());
+					totalOut.resetAtValue(firstRecord.getTransferredOut());
+				}
+
+				processEntireStream(inputStream);
+			} catch (Exception e) {
+				logger.error("Error processing file: " + firstFile.getName(), e);
+			} finally {
+				if (inputStream != null) {
+					inputStream.close();
+					inputStream = null;
+				}
+			}
+
+			for (int i = 1; i < thisMonthFiles.size(); i++) {
+				logger.debug("Processing history file: " + thisMonthFiles.get(i).getName());
+				try {
+					inputStream = new DataInputStream(new BufferedInputStream(new FileInputStream(thisMonthFiles.get(i))));
+					processEntireStream(inputStream);
+				} catch (Exception e) {
+					logger.error("Error processing file: " + thisMonthFiles.get(i).getName(), e);
+				} finally {
+					if (inputStream != null) {
+						inputStream.close();
+						inputStream = null;
+					}
+				}
+			}
+		}
+	}
+
+	private void processEntireStream(DataInputStream inputStream) throws IOException, ClassNotFoundException {
+		try {
+			while (true) {
+				UsageRecord record = UsageRecord.readFromStream(inputStream);
+				if (record == null)
+					break;
+
+				processRecord(record);
+			}
+		} catch(EOFException e) {
+			// don't care
+		}
 	}
 
 }
