@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="airportflowmeter" default="jar" basedir=".">
+	<property name="src" location="src" />
+	<property name="bin" location="antbin" />
+	<property name="lib" location="lib" />
+	<property name="dist" location="dist" />
+	<property name="jarfile" location="${dist}/${ant.project.name}.jar" />
+	<property name="compile.debug" value="true" />
+
+	<fileset id="lib.jars" dir="${lib}"/>
+
+	<path id="lib.path">
+		<fileset refid="lib.jars" />
+	</path>
+
+	<target name="compile" description="Compile code">
+		<mkdir dir="${bin}" />
+		<mkdir dir="${lib}" />
+		<javac sourcepath="" srcdir="${src}" destdir="${bin}" includeAntRuntime="no" classpathref="lib.path" debug="${compile.debug}" source="1.5" target="1.5"/>
+	</target>
+
+	<target name="jar" depends="compile" description="Build jar">
+		<mkdir dir="${dist}" />
+		<jar jarfile="${jarfile}" basedir="${bin}" manifest="Manifest">
+			<!-- Merge library jars into final jar file -->
+			<zipgroupfileset refid="lib.jars" />
+			<fileset dir=".">
+				<include name="*.plist"/>
+			</fileset>
+		</jar>
+
+	</target>
+
+	<target name="clean" description="Remove build and dist directories">
+		<delete dir="${bin}" />
+		<delete dir="${dist}" />
+	</target>
+</project>

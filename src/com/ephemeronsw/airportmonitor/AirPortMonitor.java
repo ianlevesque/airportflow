@@ -191,6 +191,9 @@ public class AirPortMonitor implements Runnable {
 	}
 
 	private void loadHistory() throws FileNotFoundException, IOException, ClassNotFoundException {
+		if(!historyDirectory.exists())
+			return;
+		
 		File[] historyFiles = historyDirectory.listFiles(new FileFilter() {
 			public boolean accept(File pathname) {
 				if (pathname.isDirectory())

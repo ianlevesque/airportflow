@@ -1,0 +1,16 @@
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.ephemeronsw.airportmonitor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/java</string>
+    <string>-jar</string>
+    <string>/Library/AirPortFlowMeter/airportflowmeter.jar</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Library/AirPortFlowMeter</string>
+  <key>KeepAlive</key>
+  <boolean>true</boolean>
+</dict>
+</plist>
