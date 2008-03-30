@@ -15,5 +15,7 @@
   <string>/Library/AirPortFlowMeter</string>
   <key>KeepAlive</key>
   <true/>
+  <key>RunAtLoad</key>
+  <true/>
 </dict>
 </plist>
