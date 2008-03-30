@@ -5,21 +5,20 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 
 public class UsageRecord {
-	private static final long MAGIC = 0xDEADBEEFDEADBEEFL;
-	
+	private static final short MAGIC = (short) 0xBEEF;
+
 	private long timeCaptured = 0;
 	private long uptime = 0;
 	private long transferredIn = 0;
 	private long transferredOut = 0;
 
-	public UsageRecord(long timeCaptured, long uptime, long transferredIn,
-			long transferredOut) {
+	public UsageRecord(long timeCaptured, long uptime, long transferredIn, long transferredOut) {
 		this.timeCaptured = timeCaptured;
 		this.uptime = uptime;
 		this.transferredIn = transferredIn;
 		this.transferredOut = transferredOut;
 	}
-	
+
 	public UsageRecord() {
 	}
 
@@ -54,27 +53,40 @@ public class UsageRecord {
 	public void setTransferredOut(long transferredOut) {
 		this.transferredOut = transferredOut;
 	}
-	
+
 	public static UsageRecord readFromStream(DataInputStream stream) throws IOException {
 		UsageRecord record = new UsageRecord();
-		
-		long magic = stream.readLong();
-		if(magic != MAGIC)
+
+		short magic = stream.readShort();
+		if (magic != MAGIC)
 			throw new IOException("Magic value is wrong, stream corrupted");
-		
+
 		record.setTimeCaptured(stream.readLong());
-		record.setTransferredIn(stream.readLong());
-		record.setTransferredOut(stream.readLong());
-		record.setUptime(stream.readLong());
-		
+		record.setTransferredIn(readUnsignedInt(stream));
+		record.setTransferredOut(readUnsignedInt(stream));
+		record.setUptime(readUnsignedInt(stream));
+
 		return record;
 	}
+
+	private static long readUnsignedInt(DataInputStream stream) throws IOException {
+		int firstByte = (0x000000FF & ((int) stream.readByte()));
+		int secondByte = (0x000000FF & ((int) stream.readByte()));
+		int thirdByte = (0x000000FF & ((int) stream.readByte()));
+		int fourthByte = (0x000000FF & ((int) stream.readByte()));
+		
+		long anUnsignedInt = ((long) (firstByte << 24 | secondByte << 16 | thirdByte << 8 | fourthByte)) & 0xFFFFFFFFL;
+
+		return anUnsignedInt;
+	}
+
 	
+	// usage per month in GB = 22 * (31 * 24 * 60 * 60 / 10) / 1024 / 1024 = 5.62 GB;
 	public void writeToStream(DataOutputStream stream) throws IOException {
-		stream.writeLong(MAGIC);
+		stream.writeShort(MAGIC);
 		stream.writeLong(timeCaptured);
-		stream.writeLong(transferredIn);
-		stream.writeLong(transferredOut);
-		stream.writeLong(uptime);
+		stream.writeInt((int) transferredIn);
+		stream.writeInt((int) transferredOut);
+		stream.writeInt((int) uptime);
 	}
 }
