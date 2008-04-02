@@ -9,14 +9,18 @@ public class CumulativeCounter {
 		currentValue = lastRestartValue = lastValue = initialValue;
 	}
 	
-	public void accumulateValue(long value) {
+	public long accumulateValue(long value) {
 		if(value < lastValue) {
 			lastRestartValue = currentValue;
 			resetValue = 0;
 		}
 		
+		long oldValue = currentValue;
+		
 		currentValue = lastRestartValue + (value - resetValue);
 		lastValue = value;
+		
+		return currentValue - oldValue;
 	}
 	
 	public void resetAtValue(long value) {

@@ -11,6 +11,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.text.DecimalFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -24,8 +25,18 @@ import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 
+import javax.servlet.ServletException;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
+import org.mortbay.jetty.Server;
+import org.mortbay.jetty.servlet.Context;
+import org.mortbay.jetty.servlet.DefaultServlet;
+import org.mortbay.jetty.servlet.ServletHolder;
+import org.mortbay.resource.Resource;
 import org.snmp4j.CommunityTarget;
 import org.snmp4j.PDU;
 import org.snmp4j.Snmp;
@@ -82,6 +93,11 @@ public class AirPortMonitor implements Runnable {
 	private Snmp snmp;
 	private PDU requestPDU;
 	private CommunityTarget target;
+	private Server jettyServer;
+	private long lastIn;
+	private long lastOut;
+	private long lastTime;
+	private long lastInterval;
 
 	public AirPortMonitor() throws IOException {
 
@@ -95,15 +111,52 @@ public class AirPortMonitor implements Runnable {
 
 		requestPDU = new PDU();
 		requestPDU.add(new VariableBinding(OUT_OCTETS_OID)); // ifOutOctets
-																// (for gec0)
+		// (for gec0)
 		requestPDU.add(new VariableBinding(IN_OCTETS_OID)); // ifInOctets (for
-															// gec0)
+		// gec0)
 		requestPDU.add(new VariableBinding(UPTIME_OID)); // uptime
 		requestPDU.setType(PDU.GET);
 
 		DefaultUdpTransportMapping transport = new DefaultUdpTransportMapping();
 		snmp = new Snmp(transport);
 		transport.listen();
+
+		jettyServer = new Server(8080);
+		Context context = new Context(jettyServer, "/", Context.SESSIONS);
+		try {
+			context.setBaseResource(Resource.newClassPathResource("/web/"));
+		} catch(Exception e) {
+			context.setResourceBase("./web/");
+		}
+		context.addServlet(new ServletHolder(new HttpServlet() {
+			@Override
+			protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+				resp.setContentType("text/javascript");
+				PrintWriter writer = resp.getWriter();
+
+				double limit = 200;
+				double total = (totalIn.getCurrentValue() + totalOut.getCurrentValue()) / 1024.0 / 1024.0 / 1024.0;
+				double upload = totalOut.getCurrentValue() / 1024.0 / 1024.0 / 1024.0;
+				double download = totalIn.getCurrentValue() / 1024.0 / 1024.0 / 1024.0;
+
+				DecimalFormat format = new DecimalFormat();
+				format.setMaximumFractionDigits(3);
+				format.setMinimumFractionDigits(3);
+
+				long progress = (long) (total / limit * 100.0);
+				writer.write("{ \"progress\" : \"" + progress + "%\", \"download\" : \"" + format.format(download) + " GB\", \"upload\" : \"" + format.format(upload)
+						+ " GB\",  \"total\" : \"" + format.format(total) + " GB\", \"limit\" : \"" + format.format(limit) + " GB\", "
+						+ "\"lastdown\" : \"" + format.format(lastIn / (lastInterval / 1000.0) / 1024.0) + " KB/s\", "    
+						+ "\"lastup\" : \"" + format.format(lastOut / (lastInterval / 1000.0) / 1024.0) + " KB/s\" " +  
+				"  }");
+			}
+		}), "/value");
+		context.addServlet(new ServletHolder(new DefaultServlet()), "/*");
+		try {
+			jettyServer.start();
+		} catch (Exception e) {
+			logger.error("Error starting jetty server", e);
+		}
 	}
 
 	public void run() {
@@ -128,25 +181,26 @@ public class AirPortMonitor implements Runnable {
 				long usageIn = -1;
 				long usageOut = -1;
 
+				String uptimeStr = "";
 				for (VariableBinding binding : response.getResponse().toArray()) {
 					if (binding.getOid().equals(OUT_OCTETS_OID)) {
-						logger.debug("Out octets: " + binding.getVariable().toString());
 						usageOut = binding.getVariable().toLong();
 					} else if (binding.getOid().equals(IN_OCTETS_OID)) {
-						logger.debug("In octets: " + binding.getVariable().toString());
 						usageIn = binding.getVariable().toLong();
 					} else if (binding.getOid().equals(UPTIME_OID)) {
-						logger.debug("Uptime: " + binding.getVariable().toString());
 						uptimeTicks = binding.getVariable().toLong();
+						uptimeStr = binding.getVariable().toString();
 					}
 				}
+				
+				logger.debug("In octets: " + usageIn + " Out octets: " + usageOut + " Uptime: " + uptimeStr);
 
 				if (uptimeTicks == -1 || usageIn == -1 || usageOut == -1) {
 					logger.error("One or more replies missing"); // FIXME:
-																	// necessary?
+					// necessary?
 				} else {
 					record.setUptime(uptimeTicks * 10); // convert to
-														// milliseconds
+					// milliseconds
 					record.setTransferredIn(usageIn);
 					record.setTransferredOut(usageOut);
 				}
@@ -162,12 +216,31 @@ public class AirPortMonitor implements Runnable {
 	}
 
 	private void processRecord(UsageRecord record) {
+		long currentTime = record.getTimeCaptured();
+		
+		GregorianCalendar calendar = new GregorianCalendar();
+		calendar.setTimeInMillis(lastTime);
+		int lastMonth = calendar.get(GregorianCalendar.MONTH);
+		
+		calendar.setTimeInMillis(currentTime);
+		int thisMonth = calendar.get(GregorianCalendar.MONTH); 
+		
+		lastInterval = currentTime - lastTime;
+		lastTime = currentTime;
 
-		// FIXME: use Uptime value to correctly accumulate the very top of the
-		// overflow (4GB)
-		totalIn.accumulateValue(record.getTransferredIn());
-		totalOut.accumulateValue(record.getTransferredOut());
+		if(lastMonth != thisMonth && lastTime != 0) {
+			totalIn.resetAtValue(record.getTransferredIn());
+			totalOut.resetAtValue(record.getTransferredOut());
+			logger.info("Resetting month!");
+		} else {
 
+			// FIXME: use Uptime value to correctly accumulate the very top of the
+			// overflow (4GB)
+
+			lastIn = totalIn.accumulateValue(record.getTransferredIn());
+			lastOut = totalOut.accumulateValue(record.getTransferredOut());
+		}
+		
 		double inGigabytes = totalIn.getCurrentValue() / 1024.0 / 1024.0 / 1024.0;
 		double outGigabytes = totalOut.getCurrentValue() / 1024.0 / 1024.0 / 1024.0;
 
@@ -175,7 +248,7 @@ public class AirPortMonitor implements Runnable {
 		format.setMaximumFractionDigits(3);
 		format.setMinimumFractionDigits(3);
 
-		logger.info("Total In: " + format.format(inGigabytes) + " GB Total Out: " + format.format(outGigabytes) + " GB");
+		logger.info("Total In: " + format.format(inGigabytes) + " GB, Total Out: " + format.format(outGigabytes) + " GB, Total Usage: " + format.format(inGigabytes + outGigabytes) + " GB");
 	}
 
 	private void storeRecord(UsageRecord record) throws IOException {
@@ -191,9 +264,9 @@ public class AirPortMonitor implements Runnable {
 	}
 
 	private void loadHistory() throws FileNotFoundException, IOException, ClassNotFoundException {
-		if(!historyDirectory.exists())
+		if (!historyDirectory.exists())
 			return;
-		
+
 		File[] historyFiles = historyDirectory.listFiles(new FileFilter() {
 			public boolean accept(File pathname) {
 				if (pathname.isDirectory())
@@ -297,7 +370,7 @@ public class AirPortMonitor implements Runnable {
 
 				processRecord(record);
 			}
-		} catch(EOFException e) {
+		} catch (EOFException e) {
 			// don't care
 		}
 	}

@@ -7,7 +7,7 @@
 	<property name="jarfile" location="${dist}/${ant.project.name}.jar" />
 	<property name="compile.debug" value="true" />
 
-	<fileset id="lib.jars" dir="${lib}"/>
+	<fileset id="lib.jars" dir="${lib}" />
 
 	<path id="lib.path">
 		<fileset refid="lib.jars" />
@@ -16,7 +16,7 @@
 	<target name="compile" description="Compile code">
 		<mkdir dir="${bin}" />
 		<mkdir dir="${lib}" />
-		<javac sourcepath="" srcdir="${src}" destdir="${bin}" includeAntRuntime="no" classpathref="lib.path" debug="${compile.debug}" source="1.5" target="1.5"/>
+		<javac sourcepath="" srcdir="${src}" destdir="${bin}" includeAntRuntime="no" classpathref="lib.path" debug="${compile.debug}" source="1.5" target="1.5" />
 	</target>
 
 	<target name="jar" depends="compile" description="Build jar">
@@ -25,10 +25,10 @@
 			<!-- Merge library jars into final jar file -->
 			<zipgroupfileset refid="lib.jars" />
 			<fileset dir=".">
-				<include name="*.plist"/>
+				<include name="*.plist" />
+				<include name="web/*" />
 			</fileset>
 		</jar>
-
 	</target>
 
 	<target name="clean" description="Remove build and dist directories">
