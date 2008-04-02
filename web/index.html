@@ -1,0 +1,97 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <title>Internet Usage</title>
+        
+        <style type="text/css">
+            body {
+                background-color: white;
+                font-family: Verdana;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            
+            .prog-border {
+                height: 17px;
+                width: 300px;
+                background: #fff;
+                border: 1px solid silver;
+                margin: 0;
+                padding: 0;
+                
+                text-align: center;
+            }
+            
+            .prog-bar {
+                height: 13px;
+                margin: 1px;
+                padding: 0;
+                background: #8899EC;
+                border: 1px solid silver;
+            }
+        </style>
+        <script type="text/javascript" src="jquery-1.2.3.min.js"></script>
+        <script type="text/javascript" src="jquery.timer.js"></script>
+        <script type="text/javascript">
+            $(document).ready(function() {
+            	$.getJSON("value",
+                        function(data){
+                            updateProgress(data.progress);
+                        
+                            $(download).text(data.download);
+                            $(upload).text(data.upload);
+                            $(total).text(data.total);
+                            $(limit).text(data.limit);
+                            $(downrate).text(data.lastdown);
+                            $(uprate).text(data.lastup);
+                        });
+            
+                $.timer(10000, function (timer) {
+                    $.getJSON("value",
+                        function(data){
+                            updateProgress(data.progress);
+                        
+                            $(download).text(data.download);
+                            $(upload).text(data.upload);
+                            $(total).text(data.total);
+                            $(limit).text(data.limit);
+                            $(downrate).text(data.lastdown);
+                            $(uprate).text(data.lastup);
+                        });
+                });
+            });
+            
+            function updateProgress(amount) {
+                $(progbar).css("width",amount);
+                $(progbar).text(amount);
+            }
+        </script>
+    </head>
+    <body>
+        <div class="prog-border">
+            <div class="prog-bar" style="width: 0%" id="progbar"></div>
+        </div>
+        <p>
+            <table border="0" style="width: 300px;">
+                <tr>
+                    <td>Downloaded:</td>
+                    <td align="right" id="download"></td>
+                    <td align="right" id="downrate"></td>
+                </tr>
+                <tr>
+                    <td>Uploaded:</td>
+                    <td align="right" id="upload"></td>
+                    <td align="right" id="uprate"></td>
+                </tr>
+                <tr>
+                    <td>Total:</td>
+                    <td align="right" id="total"></td>
+                </tr>
+                <tr>
+                    <td>Limit:</td>
+                    <td align="right" id="limit"></td>
+                </tr>
+            </table>
+        </p>
+    </body>
+</html>
