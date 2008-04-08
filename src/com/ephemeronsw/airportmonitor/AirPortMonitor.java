@@ -54,9 +54,11 @@ public class AirPortMonitor implements Runnable {
 	private static final String HISTORY_PREFIX = "history-";
 	private static final SimpleDateFormat HISTORY_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd-HH");
 	private static final OID UPTIME_OID = new OID("1.3.6.1.2.1.1.3.0");
-	private static final OID IN_OCTETS_OID = new OID("1.3.6.1.2.1.2.2.1.10.1");
-	private static final OID OUT_OCTETS_OID = new OID("1.3.6.1.2.1.2.2.1.16.1");
-
+//	private static final OID IN_OCTETS_OID = new OID("1.3.6.1.2.1.2.2.1.10.1");
+//	private static final OID OUT_OCTETS_OID = new OID("1.3.6.1.2.1.2.2.1.16.1");
+	private static final OID IN_OCTETS_OID = new OID("1.3.6.1.2.1.2.2.1.10.6");
+	private static final OID OUT_OCTETS_OID = new OID("1.3.6.1.2.1.2.2.1.16.6");
+	
 	private File historyDirectory = new File("./history/");
 
 	CumulativeCounter totalIn = new CumulativeCounter();
